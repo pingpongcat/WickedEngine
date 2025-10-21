@@ -89,9 +89,18 @@ file(GLOB HEADER_FILES CONFIGURE_DEPENDS *.h)
 file(GLOB SOURCE_FILES CONFIGURE_DEPENDS *.cpp)
 list(REMOVE_ITEM SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/offlineshadercompiler.cpp)
 
+# Add tinyosc C file for OSC support
+list(APPEND SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/tinyosc.c)
+
 add_library(${TARGET_NAME} ${WICKED_LIBRARY_TYPE}
     ${SOURCE_FILES}
     ${HEADER_FILES}
+)
+
+# Set tinyosc.c as C language and exclude from precompiled headers
+set_source_files_properties(tinyosc.c PROPERTIES
+    LANGUAGE C
+    SKIP_PRECOMPILE_HEADERS ON
 )
 
 target_precompile_headers(${TARGET_NAME} PRIVATE WickedEngine.h)
@@ -196,6 +205,9 @@ else ()
     # `ska::flat_hash_map` has issues on linux because of the hash function being identity
     # in same cases. Use `robin_hood::unordered_flat_map` instead
     target_compile_definitions(${TARGET_NAME} PUBLIC WI_UNORDERED_MAP_TYPE=2)
+
+    # Define _GNU_SOURCE for tinyosc endian.h support on Linux
+    target_compile_definitions(${TARGET_NAME} PRIVATE _GNU_SOURCE)
 
     target_link_libraries(${TARGET_NAME} PUBLIC
         Threads::Threads

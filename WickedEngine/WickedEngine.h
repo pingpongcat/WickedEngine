@@ -61,6 +61,7 @@
 #include "wiGPUSortLib.h"
 #include "wiJobSystem.h"
 #include "wiNetwork.h"
+#include "wiOSC.h"
 #include "wiEventHandler.h"
 #include "wiShaderCompiler.h"
 #include "wiCanvas.h"

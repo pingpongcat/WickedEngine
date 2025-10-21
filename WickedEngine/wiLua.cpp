@@ -20,6 +20,7 @@
 #include "wiSpriteFont_BindLua.h"
 #include "wiBacklog_BindLua.h"
 #include "wiNetwork_BindLua.h"
+#include "wiOSC_BindLua.h"
 #include "wiPrimitive_BindLua.h"
 #include "wiPhysics_BindLua.h"
 #include "wiVoxelGrid_BindLua.h"
@@ -309,6 +310,7 @@ namespace wi::lua
 		SpriteFont_BindLua::Bind();
 		backlog::Bind();
 		Network_BindLua::Bind();
+		osc::Bind();
 		primitive::Bind();
 		Physics_BindLua::Bind();
 		VoxelGrid_BindLua::Bind();

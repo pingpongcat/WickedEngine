@@ -22,6 +22,7 @@ option(USE_LIBCXX "Link WickedEngine to llvm libc++ library - only available wit
 option(WICKED_EDITOR "Build WickedEngine editor" ON)
 option(WICKED_TESTS "Build WickedEngine tests" ON)
 option(WICKED_IMGUI_EXAMPLE "Build WickedEngine imgui example" ON)
+option(WICKED_OSC_EXAMPLE "Build WickedEngine OSC example" ON)
 option(WICKED_USE_IPO "Enable IPO/LTO in non-debug builds" ${ipo_supported})
 
 if (CMAKE_HOST_WIN32)
@@ -147,6 +148,10 @@ endif()
 if (WICKED_IMGUI_EXAMPLE)
     add_subdirectory(Samples/Example_ImGui)
     add_subdirectory(Samples/Example_ImGui_Docking)
+endif()
+
+if (WICKED_OSC_EXAMPLE)
+    add_subdirectory(Samples/Example_OSC)
 endif()
 
 if (WICKED_LINUX_TEMPLATE)
