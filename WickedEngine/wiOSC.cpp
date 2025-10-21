@@ -96,22 +96,29 @@ namespace wi::osc
 	void OSCReceiver::Update()
 	{
 		if (!socket.IsValid())
+		{
 			return;
+		}
 
 		// Poll socket with minimal timeout (non-blocking)
-		while (wi::network::CanReceive(&socket, 1))
+		// Process at most 20 messages per frame to avoid blocking the main thread
+		int messages_processed = 0;
+		const int max_messages_per_frame = 20;
+
+		while (messages_processed < max_messages_per_frame && wi::network::CanReceive(&socket, 1))
 		{
 			wi::network::Connection sender;
 			if (wi::network::Receive(&socket, &sender, buffer, sizeof(buffer)))
 			{
+				messages_processed++;
 				OSCMessage message;
 
 				// Check if it's a bundle or single message
 				if (tosc_isBundle(buffer))
 				{
-					// Parse bundle
+					// Parse bundle with actual received byte count
 					tosc_bundle bundle;
-					tosc_parseBundle(&bundle, buffer, sizeof(buffer));
+					tosc_parseBundle(&bundle, buffer, sender.bytesReceived);
 
 					tosc_message osc;
 					while (tosc_getNextMessage(&bundle, &osc))
@@ -135,8 +142,8 @@ namespace wi::osc
 				}
 				else
 				{
-					// Parse single message
-					if (ParseOSCPacket(buffer, sizeof(buffer), message))
+					// Parse single message with actual received byte count
+					if (ParseOSCPacket(buffer, sender.bytesReceived, message))
 					{
 						// Route to callback if registered
 						auto it = callbacks.find(message.address);

@@ -76,22 +76,24 @@ public:
 				std::to_string((i - 3.5f) * 4.0f) + ", 2.0, 0.0)");
 		}
 
-		// Create a simple ground plane for reference
-		wi::ecs::Entity ground_entity = wi::ecs::CreateEntity();
-		wi::scene::TransformComponent& ground_transform = scene.transforms.Create(ground_entity);
-		ground_transform.Scale(XMFLOAT3(50.0f, 0.1f, 50.0f));
-		ground_transform.Translate(XMFLOAT3(0, -1, 0));
-		ground_transform.UpdateTransform();
+		// Load teapot model as a visible reference
+		wi::scene::LoadModel("../../Content/models/teapot.wiscene");
+		wi::backlog::post("Teapot model loaded - you should see it in the center");
 
 		// Set camera position
 		wi::scene::CameraComponent& camera = wi::scene::GetCamera();
-		camera.TransformCamera(wi::scene::TransformComponent());
-		camera.Eye = XMFLOAT3(0, 5, -20);
-		camera.At = XMFLOAT3(0, 2, 0);
+		wi::scene::TransformComponent cam_transform;
+		cam_transform.Translate(XMFLOAT3(0, 5, -20));
+		cam_transform.UpdateTransform();
+		camera.TransformCamera(cam_transform);
 		camera.UpdateCamera();
 
 		setFXAAEnabled(true);
 		setAO(AO_DISABLED);
+
+		wi::backlog::post("==========================================");
+		wi::backlog::post("OSC receiver ready - waiting for messages");
+		wi::backlog::post("==========================================");
 	}
 
 	void Update(float dt) override
@@ -143,6 +145,7 @@ int main(int argc, char *argv[])
 
 	// Create and activate our OSC visualization render path
 	OSC_MusicViz vizPath;
+	vizPath.Load();
 	application.ActivatePath(&vizPath);
 
 	// Show info display

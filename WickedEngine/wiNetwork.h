@@ -17,6 +17,7 @@ namespace wi::network
 	{
 		std::array<uint8_t, 4> ipaddress = { 127,0,0,1 };
 		uint16_t port = DEFAULT_PORT;
+		size_t bytesReceived = 0;  // Number of bytes received in last Receive() call
 	};
 
 	// Creates a socket that can be used to send or receive data

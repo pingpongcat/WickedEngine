@@ -39,6 +39,12 @@ namespace wi::lua
 	public:
 		wi::osc::OSCReceiver receiver;
 
+		// Pending callback structure (used in global map, not as member)
+		struct PendingCallback {
+			int funcRef;
+			wi::osc::OSCMessage message;
+		};
+
 		inline static constexpr char className[] = "OSCReceiver";
 		static Luna<OSCReceiver_BindLua>::FunctionType methods[];
 		static Luna<OSCReceiver_BindLua>::PropertyType properties[];

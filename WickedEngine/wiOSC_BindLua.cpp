@@ -3,6 +3,13 @@
 
 namespace wi::lua
 {
+	// Global storage for Lua callbacks, keyed by C++ OSCReceiver pointer
+	// This avoids capturing 'this' in lambdas which becomes invalid when Luna moves objects
+	struct ReceiverCallbackData {
+		std::vector<OSCReceiver_BindLua::PendingCallback> pending_callbacks;
+		std::unordered_map<std::string, int> lua_callbacks;  // address -> funcRef
+	};
+	static std::unordered_map<void*, ReceiverCallbackData> g_receiver_callbacks;
 	// ====================================================================
 	// OSCMessage_BindLua Implementation
 	// ====================================================================
@@ -161,7 +168,8 @@ namespace wi::lua
 		uint16_t port = 7000;  // Default port
 		if (argc > 0)
 		{
-			port = (uint16_t)wi::lua::SGetInt(L, 1);
+			// When using : syntax, self is at index 1, so arguments start at index 2
+			port = (uint16_t)wi::lua::SGetInt(L, 2);
 		}
 		bool success = receiver.Initialize(port);
 		wi::lua::SSetBool(L, success);
@@ -170,13 +178,60 @@ namespace wi::lua
 
 	int OSCReceiver_BindLua::Update(lua_State* L)
 	{
+		// Call the C++ receiver's Update() - this will queue callbacks
 		receiver.Update();
+
+		// Get the global callback data for this receiver
+		void* receiver_ptr = &receiver;
+
+		auto it = g_receiver_callbacks.find(receiver_ptr);
+		if (it == g_receiver_callbacks.end())
+		{
+			return 0;
+		}
+
+		// Now process all pending Lua callbacks
+		for (const auto& pending : it->second.pending_callbacks)
+		{
+			// Push the stored function onto the stack
+			lua_rawgeti(L, LUA_REGISTRYINDEX, pending.funcRef);
+
+			// Create OSCMessage_BindLua wrapper and push to Lua
+			Luna<OSCMessage_BindLua>::push(L, pending.message);
+
+			// Call the function with 1 argument
+			if (lua_pcall(L, 1, 0, 0) != 0)
+			{
+				const char* error = lua_tostring(L, -1);
+				wi::backlog::post(std::string("[OSC] Lua callback error: ") + error, wi::backlog::LogLevel::Error);
+				lua_pop(L, 1);  // Pop error message
+			}
+		}
+
+		// Clear pending callbacks for next frame
+		it->second.pending_callbacks.clear();
+
 		return 0;
 	}
 
 	int OSCReceiver_BindLua::Shutdown(lua_State* L)
 	{
 		receiver.Shutdown();
+
+		// Clean up global callback data for this receiver
+		void* receiver_ptr = &receiver;
+		auto receiver_it = g_receiver_callbacks.find(receiver_ptr);
+		if (receiver_it != g_receiver_callbacks.end())
+		{
+			// Unreference all Lua functions
+			for (const auto& pair : receiver_it->second.lua_callbacks)
+			{
+				luaL_unref(L, LUA_REGISTRYINDEX, pair.second);
+			}
+			// Remove from global map
+			g_receiver_callbacks.erase(receiver_it);
+		}
+
 		return 0;
 	}
 
@@ -195,32 +250,38 @@ namespace wi::lua
 			return 0;
 		}
 
-		std::string address = wi::lua::SGetString(L, 1);
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		std::string address = wi::lua::SGetString(L, 2);
 
-		if (!lua_isfunction(L, 2))
+		if (!lua_isfunction(L, 3))
 		{
 			wi::lua::SError(L, "SetCallback(string address, function callback) second argument must be a function!");
 			return 0;
 		}
 
 		// Store the Lua function in the registry and get a reference
-		lua_pushvalue(L, 2);  // Push the function to the top
+		lua_pushvalue(L, 3);  // Push the function to the top
 		int funcRef = luaL_ref(L, LUA_REGISTRYINDEX);  // Store in registry and get reference
 
-		// Create a C++ callback that calls the Lua function
-		receiver.SetCallback(address, [L, funcRef](const wi::osc::OSCMessage& msg) {
-			// Push the stored function onto the stack
-			lua_rawgeti(L, LUA_REGISTRYINDEX, funcRef);
+		// Get the global callback data for this receiver (keyed by C++ receiver pointer)
+		void* receiver_ptr = &receiver;
+		ReceiverCallbackData& data = g_receiver_callbacks[receiver_ptr];
+		data.lua_callbacks[address] = funcRef;
 
-			// Create OSCMessage_BindLua and push to Lua
-			Luna<OSCMessage_BindLua>::push(L, msg);
+		// Create a C++ callback that queues the message for later Lua processing
+		// Capture receiver_ptr, not 'this' (which can become invalid when Luna moves objects)
+		receiver.SetCallback(address, [receiver_ptr, address](const wi::osc::OSCMessage& msg) {
+			// Find the callback data for this receiver
+			auto receiver_it = g_receiver_callbacks.find(receiver_ptr);
+			if (receiver_it == g_receiver_callbacks.end())
+				return;
 
-			// Call the function with 1 argument
-			if (lua_pcall(L, 1, 0, 0) != 0)
+			// Find the funcRef for this address
+			auto it = receiver_it->second.lua_callbacks.find(address);
+			if (it != receiver_it->second.lua_callbacks.end())
 			{
-				const char* error = lua_tostring(L, -1);
-				wi::backlog::post(std::string("OSC callback error: ") + error, wi::backlog::LogLevel::Error);
-				lua_pop(L, 1);  // Pop error message
+				// Queue the callback to be invoked after Update() returns
+				receiver_it->second.pending_callbacks.push_back({ it->second, msg });
 			}
 		});
 
@@ -236,14 +297,44 @@ namespace wi::lua
 			return 0;
 		}
 
-		std::string address = wi::lua::SGetString(L, 1);
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		std::string address = wi::lua::SGetString(L, 2);
+
+		// Remove from C++ receiver
 		receiver.RemoveCallback(address);
+
+		// Remove from global Lua callbacks map and unreference the function
+		void* receiver_ptr = &receiver;
+		auto receiver_it = g_receiver_callbacks.find(receiver_ptr);
+		if (receiver_it != g_receiver_callbacks.end())
+		{
+			auto it = receiver_it->second.lua_callbacks.find(address);
+			if (it != receiver_it->second.lua_callbacks.end())
+			{
+				luaL_unref(L, LUA_REGISTRYINDEX, it->second);
+				receiver_it->second.lua_callbacks.erase(it);
+			}
+		}
+
 		return 0;
 	}
 
 	int OSCReceiver_BindLua::ClearCallbacks(lua_State* L)
 	{
 		receiver.ClearCallbacks();
+
+		// Unreference all Lua functions from global map
+		void* receiver_ptr = &receiver;
+		auto receiver_it = g_receiver_callbacks.find(receiver_ptr);
+		if (receiver_it != g_receiver_callbacks.end())
+		{
+			for (const auto& pair : receiver_it->second.lua_callbacks)
+			{
+				luaL_unref(L, LUA_REGISTRYINDEX, pair.second);
+			}
+			receiver_it->second.lua_callbacks.clear();
+		}
+
 		return 0;
 	}
 
@@ -330,9 +421,10 @@ namespace wi::lua
 			return 0;
 		}
 
-		std::string address = wi::lua::SGetString(L, 1);
-		float value = wi::lua::SGetFloat(L, 2);
-		OSCConnection_BindLua* conn = Luna<OSCConnection_BindLua>::lightcheck(L, 3);
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		std::string address = wi::lua::SGetString(L, 2);
+		float value = wi::lua::SGetFloat(L, 3);
+		OSCConnection_BindLua* conn = Luna<OSCConnection_BindLua>::lightcheck(L, 4);
 
 		if (conn == nullptr)
 		{
@@ -354,9 +446,10 @@ namespace wi::lua
 			return 0;
 		}
 
-		std::string address = wi::lua::SGetString(L, 1);
-		double value = wi::lua::SGetDouble(L, 2);
-		OSCConnection_BindLua* conn = Luna<OSCConnection_BindLua>::lightcheck(L, 3);
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		std::string address = wi::lua::SGetString(L, 2);
+		double value = wi::lua::SGetDouble(L, 3);
+		OSCConnection_BindLua* conn = Luna<OSCConnection_BindLua>::lightcheck(L, 4);
 
 		if (conn == nullptr)
 		{
@@ -378,9 +471,10 @@ namespace wi::lua
 			return 0;
 		}
 
-		std::string address = wi::lua::SGetString(L, 1);
-		int32_t value = wi::lua::SGetInt(L, 2);
-		OSCConnection_BindLua* conn = Luna<OSCConnection_BindLua>::lightcheck(L, 3);
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		std::string address = wi::lua::SGetString(L, 2);
+		int32_t value = wi::lua::SGetInt(L, 3);
+		OSCConnection_BindLua* conn = Luna<OSCConnection_BindLua>::lightcheck(L, 4);
 
 		if (conn == nullptr)
 		{
@@ -402,9 +496,10 @@ namespace wi::lua
 			return 0;
 		}
 
-		std::string address = wi::lua::SGetString(L, 1);
-		int64_t value = wi::lua::SGetLongLong(L, 2);
-		OSCConnection_BindLua* conn = Luna<OSCConnection_BindLua>::lightcheck(L, 3);
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		std::string address = wi::lua::SGetString(L, 2);
+		int64_t value = wi::lua::SGetLongLong(L, 3);
+		OSCConnection_BindLua* conn = Luna<OSCConnection_BindLua>::lightcheck(L, 4);
 
 		if (conn == nullptr)
 		{
@@ -426,9 +521,10 @@ namespace wi::lua
 			return 0;
 		}
 
-		std::string address = wi::lua::SGetString(L, 1);
-		std::string value = wi::lua::SGetString(L, 2);
-		OSCConnection_BindLua* conn = Luna<OSCConnection_BindLua>::lightcheck(L, 3);
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		std::string address = wi::lua::SGetString(L, 2);
+		std::string value = wi::lua::SGetString(L, 3);
+		OSCConnection_BindLua* conn = Luna<OSCConnection_BindLua>::lightcheck(L, 4);
 
 		if (conn == nullptr)
 		{
@@ -483,10 +579,11 @@ namespace wi::lua
 			return 0;
 		}
 
-		connection.ipaddress[0] = (uint8_t)wi::lua::SGetInt(L, 1);
-		connection.ipaddress[1] = (uint8_t)wi::lua::SGetInt(L, 2);
-		connection.ipaddress[2] = (uint8_t)wi::lua::SGetInt(L, 3);
-		connection.ipaddress[3] = (uint8_t)wi::lua::SGetInt(L, 4);
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		connection.ipaddress[0] = (uint8_t)wi::lua::SGetInt(L, 2);
+		connection.ipaddress[1] = (uint8_t)wi::lua::SGetInt(L, 3);
+		connection.ipaddress[2] = (uint8_t)wi::lua::SGetInt(L, 4);
+		connection.ipaddress[3] = (uint8_t)wi::lua::SGetInt(L, 5);
 
 		return 0;
 	}
@@ -500,7 +597,8 @@ namespace wi::lua
 			return 0;
 		}
 
-		connection.port = (uint16_t)wi::lua::SGetInt(L, 1);
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		connection.port = (uint16_t)wi::lua::SGetInt(L, 2);
 		return 0;
 	}
 

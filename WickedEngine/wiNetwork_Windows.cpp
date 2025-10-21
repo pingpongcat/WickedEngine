@@ -174,6 +174,7 @@ namespace wi::network
 			}
 
 			connection->port = htons(sender.sin_port); // reverse byte order from network to host
+			connection->bytesReceived = result;  // Store actual bytes received
 			connection->ipaddress[0] = sender.sin_addr.S_un.S_un_b.s_b1;
 			connection->ipaddress[1] = sender.sin_addr.S_un.S_un_b.s_b2;
 			connection->ipaddress[2] = sender.sin_addr.S_un.S_un_b.s_b3;

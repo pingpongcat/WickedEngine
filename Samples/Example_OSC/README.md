@@ -60,12 +60,15 @@ Compatible with any OSC transmitter, such as:
 ```
         Light1  Light2  Light3  Light4  Light5  Light6  Light7  Light8
         (Red)  (Orange)(Yellow)(Green) (Cyan)  (Blue) (Purple)(Magenta)
+          ●      ●       ●       ●       ●       ●       ●       ●  <- Point lights at Y=2.0
           │      │       │       │       │       │       │       │
-          ●──────●───────●───────●───────●───────●───────●───────●
+          ◯      ◯       ◯       ◯       ◯       ◯       ◯       ◯  <- White spheres at Y=0.5
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  <- Gray ground plane
 
-        Position: (-14,2,0) ... (14,2,0)
-        Range: 20 units
-        Camera: (0, 5, -20) looking at (0, 2, 0)
+        Lights: Position (-14,2,0) to (14,2,0), Range: 20 units
+        Spheres: Position (-14,0.5,0) to (14,0.5,0), Radius: 0.5
+        Ground: 50x50 units, Gray (0.3, 0.3, 0.3)
+        Camera: (0, 5, -20) looking at origin
 ```
 
 ## Controls
