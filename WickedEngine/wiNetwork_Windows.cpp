@@ -26,8 +26,8 @@ namespace wi::network
 			if (result)
 			{
 				int error = WSAGetLastError();
-				wi::backlog::post("wi::network Initialization FAILED with error: " + std::to_string(error));
-				assert(0);
+				wi::backlog::post("wi::network Initialization FAILED with error: " + std::to_string(error), wi::backlog::LogLevel::Error);
+				// Don't crash - allow application to continue without network
 			}
 
 			wilog("wi::network Initialized (%d ms)", (int)std::round(timer.elapsed()));
@@ -50,11 +50,14 @@ namespace wi::network
 
 		~SocketInternal()
 		{
-			int result = closesocket(handle);
-			if (result == SOCKET_ERROR)
+			if (handle != NULL && handle != INVALID_SOCKET)
 			{
-				int error = WSAGetLastError();
-				assert(0 && error);
+				int result = closesocket(handle);
+				if (result == SOCKET_ERROR)
+				{
+					int error = WSAGetLastError();
+					wi::backlog::post("wi::network error closing socket: " + std::to_string(error), wi::backlog::LogLevel::Warning);
+				}
 			}
 		}
 	};
@@ -75,6 +78,14 @@ namespace wi::network
 			int error = WSAGetLastError();
 			wi::backlog::post("wi::network error in CreateSocket: " + std::to_string(error));
 			return false;
+		}
+
+		// Set socket to non-blocking mode to prevent freezing
+		u_long mode = 1;  // 1 = non-blocking, 0 = blocking
+		if (ioctlsocket(socketinternal->handle, FIONBIO, &mode) != 0)
+		{
+			int error = WSAGetLastError();
+			wi::backlog::post("wi::network error in CreateSocket: ioctlsocket failed: " + std::to_string(error), wi::backlog::LogLevel::Warning);
 		}
 
 		return true;
@@ -147,8 +158,8 @@ namespace wi::network
 			if (result < 0)
 			{
 				int error = WSAGetLastError();
-				wi::backlog::post("wi::network error in CanReceive: " + std::to_string(error));
-				assert(0);
+				// Socket error - log it but don't crash
+				wi::backlog::post("wi::network error in CanReceive: " + std::to_string(error), wi::backlog::LogLevel::Warning);
 				return false;
 			}
 

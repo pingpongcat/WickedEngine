@@ -8,6 +8,7 @@
 #include <string>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -26,9 +27,12 @@ namespace wi::network
 	struct SocketInternal{
 		int handle;
 		~SocketInternal(){
-			int result = close(handle);
-			if(result < 0){
-				assert(0);
+			if (handle >= 0)
+			{
+				int result = close(handle);
+				if(result < 0){
+					wi::backlog::post("wi::network_Linux error closing socket: " + std::string(strerror(errno)), wi::backlog::LogLevel::Warning);
+				}
 			}
 		}
 	};
@@ -49,6 +53,20 @@ namespace wi::network
 		{
 			wi::backlog::post("wi::network_Linux error in CreateSocket: Could not create socket");
 			return false;
+		}
+
+		// Set socket to non-blocking mode to prevent freezing
+		int flags = fcntl(socketinternal->handle, F_GETFL, 0);
+		if (flags == -1)
+		{
+			wi::backlog::post("wi::network_Linux error in CreateSocket: fcntl F_GETFL failed", wi::backlog::LogLevel::Warning);
+		}
+		else
+		{
+			if (fcntl(socketinternal->handle, F_SETFL, flags | O_NONBLOCK) == -1)
+			{
+				wi::backlog::post("wi::network_Linux error in CreateSocket: fcntl F_SETFL failed", wi::backlog::LogLevel::Warning);
+			}
 		}
 
 		return true;
@@ -114,11 +132,12 @@ namespace wi::network
 			timeout.tv_sec = 0;
 			timeout.tv_usec = timeout_microseconds;
 
-			int result = select(0, &readfds, NULL, NULL, &timeout);
+			// First arg to select() on Linux must be highest fd + 1, NOT 0!
+			int result = select(socketinternal->handle + 1, &readfds, NULL, NULL, &timeout);
 			if (result < 0)
 			{
-				wi::backlog::post("wi::network_Linux error in Send: (Error Code: " + std::to_string(result) + ") " + std::string(strerror(result)));
-				assert(0);
+				// Socket error - log it but don't crash
+				wi::backlog::post("wi::network_Linux error in CanReceive: (Error Code: " + std::to_string(errno) + ") " + std::string(strerror(errno)), wi::backlog::LogLevel::Warning);
 				return false;
 			}
 
@@ -137,8 +156,12 @@ namespace wi::network
 			int result = recvfrom(socketinternal->handle, (char*)data, (int)dataSize, 0, (sockaddr*)& sender, (socklen_t*)&targetsize);
 			if (result < 0)
 			{
-				wi::backlog::post("wi::network_Linux error in Send: (Error Code: " + std::to_string(result) + ") " + std::string(strerror(result)));
-				assert(0);
+				// Socket error - log it but don't crash
+				// EAGAIN/EWOULDBLOCK means no data available (non-blocking socket)
+				if (errno != EAGAIN && errno != EWOULDBLOCK)
+				{
+					wi::backlog::post("wi::network_Linux error in Receive: (Error Code: " + std::to_string(errno) + ") " + std::string(strerror(errno)), wi::backlog::LogLevel::Warning);
+				}
 				return false;
 			}
 
