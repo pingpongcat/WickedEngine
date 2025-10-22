@@ -101,9 +101,9 @@ namespace wi::osc
 		}
 
 		// Poll socket with minimal timeout (non-blocking)
-		// Process at most 20 messages per frame to avoid blocking the main thread
+		// Process at most 8 messages per frame to avoid blocking the main thread
 		int messages_processed = 0;
-		const int max_messages_per_frame = 20;
+		const int max_messages_per_frame = 8;
 
 		while (messages_processed < max_messages_per_frame && wi::network::CanReceive(&socket, 1))
 		{
