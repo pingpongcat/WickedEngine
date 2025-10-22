@@ -98,20 +98,35 @@ namespace wi::network
 		return false;
 	}
 
-	bool ListenPort(const Socket* sock, uint16_t port)
+	bool ListenPort(const Socket* sock, uint16_t port, uint8_t ip0, uint8_t ip1, uint8_t ip2, uint8_t ip3)
 	{
 		if (sock->IsValid()){
 			sockaddr_in target;
 			target.sin_family = AF_INET;
 			target.sin_port = htons(port);
-			target.sin_addr.s_addr = htonl(INADDR_ANY);
+
+			// If all IP octets are 0, bind to INADDR_ANY (all interfaces)
+			// Otherwise, bind to the specified IP address
+			if (ip0 == 0 && ip1 == 0 && ip2 == 0 && ip3 == 0)
+			{
+				target.sin_addr.s_addr = htonl(INADDR_ANY);
+			}
+			else
+			{
+				in_addr_union address;
+				address.S_un_b.s_b1 = ip0;
+				address.S_un_b.s_b2 = ip1;
+				address.S_un_b.s_b3 = ip2;
+				address.S_un_b.s_b4 = ip3;
+				target.sin_addr.s_addr = address.S_addr;
+			}
 
 			auto socketinternal = to_internal(sock);
 
 			int result = bind(socketinternal->handle, (struct sockaddr *)&target , sizeof(target));
 			if (result < 0)
 			{
-				wi::backlog::post("wi::network_Linux error in Send: (Error Code: " + std::to_string(result) + ") " + std::string(strerror(result)));
+				wi::backlog::post("wi::network_Linux error in ListenPort: (Error Code: " + std::to_string(errno) + ") " + std::string(strerror(errno)));
 				return false;
 			}
 

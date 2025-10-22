@@ -1506,30 +1506,48 @@ Receives OSC messages on a specified UDP port. Supports both callback-based and 
 
 ```cpp
 class OSCReceiver {
-    bool Initialize(uint16_t port = 7000);
+    bool Initialize(uint16_t port = 7000, uint8_t ip0 = 0, uint8_t ip1 = 0, uint8_t ip2 = 0, uint8_t ip3 = 0);
     void Shutdown();
     void Update();  // Call each frame to poll socket and invoke callbacks
 
+    // Channel path configuration
+    void SetChannelPath(const std::string& template_path);  // Set channel path template (e.g., "/ch/%d")
+    std::string GetChannelPath(int index) const;            // Get formatted path for channel index
+
     // Callback-based API
     void SetCallback(const std::string& address, MessageCallback callback);
-    void ClearCallback(const std::string& address);
+    void RemoveCallback(const std::string& address);
+    void ClearCallbacks();
 
     // Queue-based API
     bool HasMessages() const;
     OSCMessage PopMessage();
+    size_t GetMessageCount() const;
+    void ClearMessages();
 };
 ```
 
 **Example:**
 ```cpp
 wi::osc::OSCReceiver receiver;
+
+// Listen on all interfaces (default behavior)
 receiver.Initialize(7000);
 
-// Register callback for specific address
-receiver.SetCallback("/ch/1", [](const wi::osc::OSCMessage& msg) {
-    float value = msg.GetFloat(0);
-    // Update light intensity, trigger animations, etc.
-});
+// Or bind to specific IP address (e.g., localhost only)
+receiver.Initialize(7000, 127, 0, 0, 1);
+
+// Optional: Set custom channel path template
+receiver.SetChannelPath("/fader/%d");  // Default is "/ch/%d"
+
+// Register callbacks using GetChannelPath helper
+for (int i = 1; i <= 8; i++) {
+    std::string channel = receiver.GetChannelPath(i);  // e.g., "/fader/1", "/fader/2", ...
+    receiver.SetCallback(channel, [](const wi::osc::OSCMessage& msg) {
+        float value = msg.GetFloat(0);
+        // Update light intensity, trigger animations, etc.
+    });
+}
 
 // In update loop
 receiver.Update();  // Polls socket and invokes callbacks
@@ -1571,13 +1589,24 @@ The OSC system is fully exposed to Lua for scripting-based music visualization a
 ```lua
 -- Create and initialize receiver
 receiver = OSCReceiver()
+
+-- Listen on all interfaces (default)
 receiver:Initialize(7000)
 
--- Register callback
-receiver:SetCallback("/ch/1", function(msg)
-    local value = msg:GetFloat(0)
-    -- Manipulate scene objects, lights, materials, etc.
-end)
+-- Or bind to specific IP address (e.g., localhost only)
+receiver:Initialize(7000, 127, 0, 0, 1)
+
+-- Optional: Set custom channel path template
+receiver:SetChannelPath("/fader/%d")  -- Default is "/ch/%d"
+
+-- Register callbacks using GetChannelPath helper
+for i = 1, 8 do
+    local channel = receiver:GetChannelPath(i)  -- e.g., "/fader/1", "/fader/2", ...
+    receiver:SetCallback(channel, function(msg)
+        local value = msg:GetFloat(0)
+        -- Manipulate scene objects, lights, materials, etc.
+    end)
+end
 
 -- In update loop (use runProcess for background execution)
 runProcess(function()
@@ -1718,6 +1747,107 @@ end)
 - `h` - int64 - converted to int32
 - `s` - string
 - Bundles with timetags (parsed but timetags not currently used)
+
+#### Configuration
+
+##### Custom Port and IP Configuration
+By default, the receiver listens on port 7000 on all network interfaces (0.0.0.0). You can customize both port and IP address:
+
+**C++ Example:**
+```cpp
+// Listen on all interfaces (default)
+receiver.Initialize(9000);
+
+// Listen on localhost only (127.0.0.1)
+receiver.Initialize(7000, 127, 0, 0, 1);
+
+// Listen on specific network interface
+receiver.Initialize(8000, 192, 168, 1, 100);
+```
+
+**Lua Example:**
+```lua
+-- Listen on all interfaces (default)
+receiver:Initialize(9000)
+
+-- Listen on localhost only (127.0.0.1)
+receiver:Initialize(7000, 127, 0, 0, 1)
+
+-- Listen on specific network interface
+receiver:Initialize(8000, 192, 168, 1, 100)
+```
+
+**IP Binding Use Cases:**
+- `0, 0, 0, 0` (default) - Listen on all interfaces, accepts connections from anywhere
+- `127, 0, 0, 1` - Localhost only, for testing or local applications
+- `192, 168, 1, 100` - Specific network interface, for multi-homed systems
+
+##### Custom Channel Path Templates
+The channel path template allows you to customize OSC address patterns. Use `%d` as a placeholder for the channel number:
+
+**C++ Example:**
+```cpp
+receiver.SetChannelPath("/fader/%d");   // Creates /fader/1, /fader/2, ...
+receiver.SetChannelPath("/slider/%d");  // Creates /slider/1, /slider/2, ...
+receiver.SetChannelPath("/knob/%d");    // Creates /knob/1, /knob/2, ...
+
+// Register callbacks using GetChannelPath
+for (int i = 1; i <= 8; i++) {
+    receiver.SetCallback(receiver.GetChannelPath(i), callback);
+}
+```
+
+**Lua Example:**
+```lua
+receiver:SetChannelPath("/fader/%d")   -- Creates /fader/1, /fader/2, ...
+
+-- Register callbacks using GetChannelPath
+for i = 1, 8 do
+    local channel = receiver:GetChannelPath(i)
+    receiver:SetCallback(channel, function(msg) ... end)
+end
+```
+
+##### Multiple Receivers
+You can create multiple receivers on different ports to handle different data streams:
+
+```cpp
+wi::osc::OSCReceiver control_receiver;
+control_receiver.Initialize(7000);
+control_receiver.SetChannelPath("/control/%d");
+
+wi::osc::OSCReceiver audio_receiver;
+audio_receiver.Initialize(7001);
+audio_receiver.SetChannelPath("/audio/%d");
+
+// Update both in main loop
+control_receiver.Update();
+audio_receiver.Update();
+```
+
+##### Target IP/Port for Transmitter
+The transmitter can send to any IP address and port using `OSCConnection`:
+
+**C++ Example:**
+```cpp
+// Send to localhost
+auto local_target = wi::osc::CreateConnection(127, 0, 0, 1, 8000);
+
+// Send to network device
+auto network_target = wi::osc::CreateConnection(192, 168, 1, 100, 9000);
+
+transmitter.SendFloat("/parameter", 0.5f, network_target);
+```
+
+**Lua Example:**
+```lua
+-- Create connection to specific device
+connection = OSCConnection()
+connection:SetIP(192, 168, 1, 100)  -- Remote device IP
+connection:SetPort(9000)             -- Remote port
+
+transmitter:SendFloat("/parameter", 0.5, connection)
+```
 
 #### Implementation Details
 

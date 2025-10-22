@@ -33,7 +33,8 @@ namespace wi::network
 	// Enables the socket to receive data on a port
 	//	sock		:	socket that receives packet
 	//	port		:	port number to open
-	bool ListenPort(const Socket* sock, uint16_t port = DEFAULT_PORT);
+	//	ip0-ip3		:	IP address octets to bind to (default: 0 = INADDR_ANY, listens on all interfaces)
+	bool ListenPort(const Socket* sock, uint16_t port = DEFAULT_PORT, uint8_t ip0 = 0, uint8_t ip1 = 0, uint8_t ip2 = 0, uint8_t ip3 = 0);
 
 	// Checks whether any data can be received at the moment, returns immediately
 	//	sock		:	socket that receives packet

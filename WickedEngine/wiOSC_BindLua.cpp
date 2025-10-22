@@ -155,6 +155,8 @@ namespace wi::lua
 		lunamethod(OSCReceiver_BindLua, PopMessage),
 		lunamethod(OSCReceiver_BindLua, GetMessageCount),
 		lunamethod(OSCReceiver_BindLua, ClearMessages),
+		lunamethod(OSCReceiver_BindLua, SetChannelPath),
+		lunamethod(OSCReceiver_BindLua, GetChannelPath),
 		{ NULL, NULL }
 	};
 
@@ -166,12 +168,23 @@ namespace wi::lua
 	{
 		int argc = wi::lua::SGetArgCount(L);
 		uint16_t port = 7000;  // Default port
+		uint8_t ip0 = 0, ip1 = 0, ip2 = 0, ip3 = 0;  // Default: all interfaces
+
+		// When using : syntax, self is at index 1, so arguments start at index 2
 		if (argc > 0)
 		{
-			// When using : syntax, self is at index 1, so arguments start at index 2
 			port = (uint16_t)wi::lua::SGetInt(L, 2);
 		}
-		bool success = receiver.Initialize(port);
+		if (argc > 4)
+		{
+			// Optional IP address binding (4 octets)
+			ip0 = (uint8_t)wi::lua::SGetInt(L, 3);
+			ip1 = (uint8_t)wi::lua::SGetInt(L, 4);
+			ip2 = (uint8_t)wi::lua::SGetInt(L, 5);
+			ip3 = (uint8_t)wi::lua::SGetInt(L, 6);
+		}
+
+		bool success = receiver.Initialize(port, ip0, ip1, ip2, ip3);
 		wi::lua::SSetBool(L, success);
 		return 1;
 	}
@@ -361,6 +374,37 @@ namespace wi::lua
 	{
 		receiver.ClearMessages();
 		return 0;
+	}
+
+	int OSCReceiver_BindLua::SetChannelPath(lua_State* L)
+	{
+		int argc = wi::lua::SGetArgCount(L);
+		if (argc < 1)
+		{
+			wi::lua::SError(L, "SetChannelPath(string template_path) requires 1 argument!");
+			return 0;
+		}
+
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		std::string template_path = wi::lua::SGetString(L, 2);
+		receiver.SetChannelPath(template_path);
+		return 0;
+	}
+
+	int OSCReceiver_BindLua::GetChannelPath(lua_State* L)
+	{
+		int argc = wi::lua::SGetArgCount(L);
+		if (argc < 1)
+		{
+			wi::lua::SError(L, "GetChannelPath(int index) requires 1 argument!");
+			return 0;
+		}
+
+		// When using : syntax, self is at index 1, so arguments start at index 2
+		int index = wi::lua::SGetInt(L, 2);
+		std::string path = receiver.GetChannelPath(index);
+		wi::lua::SSetString(L, path.c_str());
+		return 1;
 	}
 
 	void OSCReceiver_BindLua::Bind()

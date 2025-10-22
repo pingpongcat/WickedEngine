@@ -63,6 +63,8 @@ namespace wi::lua
 		int PopMessage(lua_State* L);
 		int GetMessageCount(lua_State* L);
 		int ClearMessages(lua_State* L);
+		int SetChannelPath(lua_State* L);
+		int GetChannelPath(lua_State* L);
 
 		static void Bind();
 	};

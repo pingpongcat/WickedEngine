@@ -118,14 +118,27 @@ namespace wi::network
 		return false;
 	}
 
-	bool ListenPort(const Socket* sock, uint16_t port)
+	bool ListenPort(const Socket* sock, uint16_t port, uint8_t ip0, uint8_t ip1, uint8_t ip2, uint8_t ip3)
 	{
 		if (socket != nullptr && sock->IsValid())
 		{
 			sockaddr_in target;
 			target.sin_family = AF_INET;
 			target.sin_port = htons(port);
-			target.sin_addr.S_un.S_addr = htonl(INADDR_ANY);
+
+			// If all IP octets are 0, bind to INADDR_ANY (all interfaces)
+			// Otherwise, bind to the specified IP address
+			if (ip0 == 0 && ip1 == 0 && ip2 == 0 && ip3 == 0)
+			{
+				target.sin_addr.S_un.S_addr = htonl(INADDR_ANY);
+			}
+			else
+			{
+				target.sin_addr.S_un.S_un_b.s_b1 = ip0;
+				target.sin_addr.S_un.S_un_b.s_b2 = ip1;
+				target.sin_addr.S_un.S_un_b.s_b3 = ip2;
+				target.sin_addr.S_un.S_un_b.s_b4 = ip3;
+			}
 
 			auto socketinternal = to_internal(sock);
 

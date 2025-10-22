@@ -73,7 +73,7 @@ namespace wi::osc
 		Shutdown();
 	}
 
-	bool OSCReceiver::Initialize(uint16_t port)
+	bool OSCReceiver::Initialize(uint16_t port, uint8_t ip0, uint8_t ip1, uint8_t ip2, uint8_t ip3)
 	{
 		// Create UDP socket
 		if (!wi::network::CreateSocket(&socket))
@@ -82,14 +82,24 @@ namespace wi::osc
 			return false;
 		}
 
-		// Bind to specified port
-		if (!wi::network::ListenPort(&socket, port))
+		// Bind to specified port and IP address
+		if (!wi::network::ListenPort(&socket, port, ip0, ip1, ip2, ip3))
 		{
 			wi::backlog::post("wi::osc::OSCReceiver - Failed to bind to port " + std::to_string(port), wi::backlog::LogLevel::Error);
 			return false;
 		}
 
-		wi::backlog::post("wi::osc::OSCReceiver - Listening on port " + std::to_string(port));
+		// Log binding information
+		if (ip0 == 0 && ip1 == 0 && ip2 == 0 && ip3 == 0)
+		{
+			wi::backlog::post("wi::osc::OSCReceiver - Listening on all interfaces, port " + std::to_string(port));
+		}
+		else
+		{
+			wi::backlog::post("wi::osc::OSCReceiver - Listening on " +
+				std::to_string(ip0) + "." + std::to_string(ip1) + "." +
+				std::to_string(ip2) + "." + std::to_string(ip3) + ":" + std::to_string(port));
+		}
 		return true;
 	}
 
@@ -168,6 +178,18 @@ namespace wi::osc
 		socket.internal_state.reset();
 		ClearCallbacks();
 		ClearMessages();
+	}
+
+	void OSCReceiver::SetChannelPath(const std::string& template_path)
+	{
+		channel_path_template = template_path;
+	}
+
+	std::string OSCReceiver::GetChannelPath(int index) const
+	{
+		char buffer[256];
+		snprintf(buffer, sizeof(buffer), channel_path_template.c_str(), index);
+		return std::string(buffer);
 	}
 
 	void OSCReceiver::SetCallback(const std::string& address, MessageCallback callback)

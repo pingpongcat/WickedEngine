@@ -43,21 +43,24 @@ namespace wi::osc
 	// OSCReceiver listens for incoming OSC messages on a specified port
 	//	Usage:
 	//		1. Call Initialize() with desired port
-	//		2. Call SetCallback() to register message handlers for specific addresses
-	//		3. Call Update() each frame to poll for messages and invoke callbacks
+	//		2. Optionally call SetChannelPath() to configure channel addressing
+	//		3. Call SetCallback() to register message handlers for specific addresses
+	//		4. Call Update() each frame to poll for messages and invoke callbacks
 	//	Alternative:
 	//		1-2. Same as above
-	//		3. Use HasMessages() and PopMessage() to manually process queued messages
+	//		3-4. Use HasMessages() and PopMessage() to manually process queued messages
 	class OSCReceiver
 	{
 	public:
 		OSCReceiver();
 		~OSCReceiver();
 
-		// Initialize the receiver and bind to specified port
+		// Initialize the receiver and bind to specified port and IP address
 		//	port	: UDP port to listen on (default 7000)
+		//	ip0-ip3	: IP address octets to bind to (default: 0,0,0,0 = all interfaces)
+		//	          Examples: 127,0,0,1 for localhost only, 192,168,1,100 for specific interface
 		//	returns : true if successful, false on error
-		bool Initialize(uint16_t port = 7000);
+		bool Initialize(uint16_t port = 7000, uint8_t ip0 = 0, uint8_t ip1 = 0, uint8_t ip2 = 0, uint8_t ip3 = 0);
 
 		// Update receiver - polls socket and processes incoming messages
 		//	Call this once per frame to receive and dispatch messages
@@ -69,6 +72,16 @@ namespace wi::osc
 
 		// Check if receiver is initialized and ready
 		inline bool IsValid() const { return socket.IsValid(); }
+
+		// Set custom channel path template (e.g., "/ch/%d" or "/fader/%d")
+		//	template_path	: Path template with %d for channel number
+		//	This affects GetChannelPath() but doesn't change callback registration
+		void SetChannelPath(const std::string& template_path);
+
+		// Get the channel path for a given channel index (1-8)
+		//	index	: Channel index (1-8)
+		//	returns : Formatted channel path (e.g., "/ch/1")
+		std::string GetChannelPath(int index) const;
 
 		// Message callback function type
 		//	Receives const reference to parsed OSC message
@@ -107,6 +120,8 @@ namespace wi::osc
 		std::unordered_map<std::string, MessageCallback> callbacks;
 		std::queue<OSCMessage> message_queue;
 		mutable std::mutex queue_mutex;
+
+		std::string channel_path_template = "/ch/%d";	// Default channel path template
 
 		// Internal helper to parse raw OSC packet into OSCMessage
 		bool ParseOSCPacket(const char* data, int length, OSCMessage& out_message);
