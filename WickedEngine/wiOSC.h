@@ -11,9 +11,6 @@
 
 namespace wi::osc
 {
-	void Initialize();
-	void Shutdown();
-
 	// OSCMessage represents a parsed OSC message
 	//	Contains the address pattern and typed argument values
 	struct OSCMessage
@@ -83,6 +80,11 @@ namespace wi::osc
 		//	returns : Formatted channel path (e.g., "/ch/1")
 		std::string GetChannelPath(int index) const;
 
+		// Set maximum number of messages to process per Update() call
+		//	max_messages : Maximum messages per frame (default: 16)
+		//	Higher values reduce latency but increase frame time
+		void SetMaxMessagesPerFrame(int max_messages);
+
 		// Message callback function type
 		//	Receives const reference to parsed OSC message
 		using MessageCallback = std::function<void(const OSCMessage&)>;
@@ -122,9 +124,13 @@ namespace wi::osc
 		mutable std::mutex queue_mutex;
 
 		std::string channel_path_template = "/ch/%d";	// Default channel path template
+		int max_messages_per_frame = 16;				// Maximum messages to process per Update()
 
 		// Internal helper to parse raw OSC packet into OSCMessage
 		bool ParseOSCPacket(const char* data, int length, OSCMessage& out_message);
+
+		// Internal helper to route message to callback or queue
+		void RouteMessage(const OSCMessage& message);
 	};
 
 	// OSCTransmitter sends OSC messages to remote destinations

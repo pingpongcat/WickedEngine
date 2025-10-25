@@ -684,8 +684,6 @@ namespace wi::lua
 			{
 				initialized = true;
 
-				wi::osc::Initialize();
-
 				OSCMessage_BindLua::Bind();
 				OSCReceiver_BindLua::Bind();
 				OSCTransmitter_BindLua::Bind();

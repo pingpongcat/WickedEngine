@@ -10,16 +10,6 @@ extern "C" {
 
 namespace wi::osc
 {
-	void Initialize()
-	{
-		wi::backlog::post("wi::osc Initialized");
-	}
-
-	void Shutdown()
-	{
-		wi::backlog::post("wi::osc Shutdown");
-	}
-
 	// ====================================================================
 	// OSCMessage Implementation
 	// ====================================================================
@@ -111,9 +101,8 @@ namespace wi::osc
 		}
 
 		// Poll socket with minimal timeout (non-blocking)
-		// Process at most 8 messages per frame to avoid blocking the main thread
+		// Process limited messages per frame to avoid blocking the main thread
 		int messages_processed = 0;
-		const int max_messages_per_frame = 8;
 
 		while (messages_processed < max_messages_per_frame && wi::network::CanReceive(&socket, 1))
 		{
@@ -135,18 +124,7 @@ namespace wi::osc
 					{
 						if (ParseOSCPacket(osc.buffer, osc.len, message))
 						{
-							// Route to callback if registered
-							auto it = callbacks.find(message.address);
-							if (it != callbacks.end())
-							{
-								it->second(message);
-							}
-							else
-							{
-								// Queue for manual processing
-								std::lock_guard<std::mutex> lock(queue_mutex);
-								message_queue.push(message);
-							}
+							RouteMessage(message);
 						}
 					}
 				}
@@ -155,18 +133,7 @@ namespace wi::osc
 					// Parse single message with actual received byte count
 					if (ParseOSCPacket(buffer, sender.bytesReceived, message))
 					{
-						// Route to callback if registered
-						auto it = callbacks.find(message.address);
-						if (it != callbacks.end())
-						{
-							it->second(message);
-						}
-						else
-						{
-							// Queue for manual processing
-							std::lock_guard<std::mutex> lock(queue_mutex);
-							message_queue.push(message);
-						}
+						RouteMessage(message);
 					}
 				}
 			}
@@ -182,14 +149,43 @@ namespace wi::osc
 
 	void OSCReceiver::SetChannelPath(const std::string& template_path)
 	{
+		if (template_path.find("%d") == std::string::npos)
+		{
+			wi::backlog::post("wi::osc::OSCReceiver - Channel path template must contain %d placeholder", wi::backlog::LogLevel::Warning);
+			return;
+		}
 		channel_path_template = template_path;
 	}
 
 	std::string OSCReceiver::GetChannelPath(int index) const
 	{
-		char buffer[256];
+		char buffer[512];
 		snprintf(buffer, sizeof(buffer), channel_path_template.c_str(), index);
 		return std::string(buffer);
+	}
+
+	void OSCReceiver::SetMaxMessagesPerFrame(int max_messages)
+	{
+		if (max_messages > 0)
+		{
+			max_messages_per_frame = max_messages;
+		}
+	}
+
+	void OSCReceiver::RouteMessage(const OSCMessage& message)
+	{
+		// Route to callback if registered
+		auto it = callbacks.find(message.address);
+		if (it != callbacks.end())
+		{
+			it->second(message);
+		}
+		else
+		{
+			// Queue for manual processing
+			std::lock_guard<std::mutex> lock(queue_mutex);
+			message_queue.push(message);
+		}
 	}
 
 	void OSCReceiver::SetCallback(const std::string& address, MessageCallback callback)
