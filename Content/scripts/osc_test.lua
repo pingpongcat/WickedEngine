@@ -1,81 +1,38 @@
--- OSC Receiver Test Script for WickedEngine
--- This script demonstrates configurable OSC message reception
--- You can customize: port, IP address, and channel path template
+-- This script will load a teapot model and control the lid position via OSC /ch/1 messages
+killProcesses()
 
-backlog_post("===========================================")
-backlog_post("  OSC Receiver Test - Channel Monitor")
-backlog_post("===========================================")
+backlog_post("---> START SCRIPT: osc_test.lua")
 
--- ============================================
--- CONFIGURATION - Edit these values as needed
--- ============================================
-local LISTEN_PORT = 7000                -- Port to listen on
-local BIND_IP = {0, 0, 0, 0}            -- IP to bind to: {0,0,0,0} = all interfaces, {127,0,0,1} = localhost only
-local CHANNEL_PATH_TEMPLATE = "/ch/%d"  -- Channel path template (e.g., "/ch/%d", "/fader/%d", "/slider/%d")
-local NUM_CHANNELS = 8                  -- Number of channels to monitor (fixed at 8 for now)
+scene = GetScene()
+scene.Clear()
+LoadModel(script_dir() .. "../models/teapot.wiscene")
+top_entity = scene.Entity_FindByName("Top")
+transform_component = scene.Component_GetTransform(top_entity)
+rest_matrix = transform_component.GetMatrix()
 
-backlog_post(string.format("Configuration:"))
-backlog_post(string.format("  Listen Port: %d", LISTEN_PORT))
-backlog_post(string.format("  Bind IP: %d.%d.%d.%d", BIND_IP[1], BIND_IP[2], BIND_IP[3], BIND_IP[4]))
-backlog_post(string.format("  Channel Path Template: %s", CHANNEL_PATH_TEMPLATE))
-backlog_post(string.format("  Number of Channels: %d", NUM_CHANNELS))
-backlog_post("===========================================")
-
--- Create OSC receiver
 receiver = OSCReceiver()
-if not receiver:Initialize(LISTEN_PORT, BIND_IP[1], BIND_IP[2], BIND_IP[3], BIND_IP[4]) then
-    backlog_post(string.format("[ERROR] Failed to initialize OSC receiver on port %d!", LISTEN_PORT))
-    return
-end
+receiver:Initialize(7000)
 
--- Set custom channel path template
-receiver:SetChannelPath(CHANNEL_PATH_TEMPLATE)
+osc_value = 0.0
+current_value = 0.0
+smoothing = 0.05  -- Smoothing factor (0 = instant, 1 = very smooth)
 
-backlog_post("OSC receiver initialized successfully")
-backlog_post(string.format("Monitoring channels: %s through %s",
-    receiver:GetChannelPath(1),
-    receiver:GetChannelPath(NUM_CHANNELS)))
-backlog_post("===========================================")
-backlog_post("")
+receiver:SetCallback("/ch/1", function(msg)
+    if msg:GetFloatCount() > 0 then
+        osc_value = msg:GetFloat(0)
+    end
+end)
 
--- Table to store latest OSC values
-osc_values = {}
-for i = 1, NUM_CHANNELS do
-    osc_values[i] = 0.0
-end
-
--- Message counter
-message_count = 0
-
--- Set up callbacks for channels 1 through NUM_CHANNELS
-for i = 1, NUM_CHANNELS do
-    local channel = receiver:GetChannelPath(i)
-    receiver:SetCallback(channel, function(msg)
-        local addr = msg:GetAddress()
-        if msg:GetFloatCount() > 0 then
-            local value = msg:GetFloat(0)
-            osc_values[i] = value
-            message_count = message_count + 1
-            backlog_post(string.format("[OSC] %s = %.3f (#%d)", addr, value, message_count))
-        else
-            backlog_post(string.format("[OSC] %s (no float data)", addr))
-        end
-    end)
-end
-
-backlog_post(string.format("Callbacks registered for channels 1-%d", NUM_CHANNELS))
-backlog_post("Waiting for OSC messages...")
-backlog_post("")
-
--- Create a background process to update the receiver
 runProcess(function()
     while true do
         receiver:Update()
+        -- Smooth interpolation
+        current_value = current_value + (osc_value - current_value) * smoothing
+        transform_component.ClearTransform()
+        transform_component.MatrixTransform(rest_matrix)
+        transform_component.Translate(Vector(0, current_value, 0))
         update()
     end
 end)
 
-backlog_post(string.format("[INFO] OSC test running - send messages to port %d", LISTEN_PORT))
-backlog_post(string.format("[INFO] Example addresses: %s, %s, ...",
-    receiver:GetChannelPath(1),
-    receiver:GetChannelPath(2)))
+backlog_post("---> END SCRIPT: osc_test.lua")
