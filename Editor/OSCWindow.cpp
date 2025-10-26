@@ -152,7 +152,9 @@ void OSCWindow::Create(EditorComponent* _editor)
 			mapping.value_max = 1.0f;
 			mapping.output_min = 0.0f;
 			mapping.output_max = 10.0f;
-			mapping.component_index = 0;  // X axis only
+			mapping.component_index = 1;  // Y axis
+			mapping.smooth = true;
+			mapping.smooth_time = 0.1f;
 
 			osc->mappings.push_back(mapping);
 			RefreshMappingList();
@@ -494,6 +496,8 @@ void OSCWindow::RefreshMappingList()
 	mappingList.ClearItems();
 
 	OSCComponent* osc = editor->GetCurrentScene().oscs.GetComponent(entity);
+	bool has_mappings = false;
+
 	if (osc != nullptr)
 	{
 		for (size_t i = 0; i < osc->mappings.size(); i++)
@@ -520,11 +524,40 @@ void OSCWindow::RefreshMappingList()
 
 			mappingList.AddItem(label);
 		}
+
+		has_mappings = osc->mappings.size() > 0;
 	}
 
-	if (selected_mapping_index >= 0 && selected_mapping_index < (int)mappingList.GetItemCount())
+	// Show/hide mapping detail controls based on whether mappings exist
+	bool show_details = has_mappings;
+	removeMappingButton.SetVisible(show_details);
+	addressLabel.SetVisible(show_details);
+	addressInput.SetVisible(show_details);
+	propertyLabel.SetVisible(show_details);
+	propertyCombo.SetVisible(show_details);
+	valueRangeLabel.SetVisible(show_details);
+	valueMinInput.SetVisible(show_details);
+	valueMaxInput.SetVisible(show_details);
+	outputRangeLabel.SetVisible(show_details);
+	outputMinInput.SetVisible(show_details);
+	outputMaxInput.SetVisible(show_details);
+	smoothCheckBox.SetVisible(show_details);
+	smoothTimeSlider.SetVisible(show_details);
+	componentIndexCombo.SetVisible(show_details);
+
+	// Auto-select first mapping if we have mappings and nothing is selected
+	if (has_mappings)
 	{
+		if (selected_mapping_index < 0 || selected_mapping_index >= (int)mappingList.GetItemCount())
+		{
+			selected_mapping_index = 0;
+		}
 		mappingList.Select(selected_mapping_index);
+		SelectMapping(selected_mapping_index);
+	}
+	else
+	{
+		selected_mapping_index = -1;
 	}
 }
 

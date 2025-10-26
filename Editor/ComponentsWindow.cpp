@@ -513,6 +513,20 @@ void ComponentsWindow::Create(EditorComponent* _editor)
 				osc.listen_ip[1] = 0;
 				osc.listen_ip[2] = 0;
 				osc.listen_ip[3] = 1;
+
+				// Add default mapping
+				OSCComponent::PropertyMapping mapping;
+				mapping.osc_address = "/ch/1";
+				mapping.target_path = AnimationComponent::AnimationChannel::Path::TRANSLATION;
+				mapping.value_min = 0.0f;
+				mapping.value_max = 1.0f;
+				mapping.output_min = 0.0f;
+				mapping.output_max = 10.0f;
+				mapping.component_index = 1;  // Y axis
+				mapping.smooth = true;
+				mapping.smooth_time = 0.1f;
+				osc.mappings.push_back(mapping);
+
 				break;
 			}
 			default:
