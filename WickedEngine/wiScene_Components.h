@@ -2673,4 +2673,69 @@ namespace wi::scene
 
 		void Serialize(wi::Archive& archive, wi::ecs::EntitySerializer& seri);
 	};
+
+	struct OSCComponent
+	{
+		enum FLAGS
+		{
+			EMPTY = 0,
+			ENABLED = 1 << 0,          // Is OSC control active?
+			SHARED_RECEIVER = 1 << 1,  // Uses global receiver vs. dedicated
+			LUA_MODE = 1 << 2,         // Uses Lua callback instead of direct mapping
+		};
+		uint32_t _flags = EMPTY;
+
+		// OSC Receiver Configuration (if not using shared receiver)
+		uint16_t listen_port = 7000;
+		uint8_t listen_ip[4] = {127, 0, 0, 1};  // Default: localhost
+
+		// Shared receiver reference (if SHARED_RECEIVER flag set)
+		wi::ecs::Entity shared_receiver_entity = wi::ecs::INVALID_ENTITY;
+
+		// Property Mappings (Direct Mode)
+		struct PropertyMapping
+		{
+			std::string osc_address;  // e.g., "/ch/1"
+
+			// Target specification
+			wi::ecs::Entity target_entity = wi::ecs::INVALID_ENTITY;  // Which entity (INVALID_ENTITY = self)
+			AnimationComponent::AnimationChannel::Path target_path = AnimationComponent::AnimationChannel::Path::UNKNOWN;  // Which property
+
+			// Value mapping
+			float value_min = 0.0f;    // OSC input range
+			float value_max = 1.0f;
+			float output_min = 0.0f;   // Output range
+			float output_max = 1.0f;
+			bool smooth = false;       // Smooth value changes
+			float smooth_time = 0.1f;  // Smoothing time in seconds
+
+			// Multi-channel support (for XMFLOAT3/XMFLOAT4)
+			int component_index = -1;  // -1 = all components, 0=x, 1=y, 2=z, 3=w
+
+			// Non-serialized runtime state
+			float smoothed_value = 0.0f;
+			float target_value = 0.0f;
+
+			void Serialize(wi::Archive& archive, wi::ecs::EntitySerializer& seri);
+		};
+		wi::vector<PropertyMapping> mappings;
+
+		// Lua Callback Mode (alternative to direct mappings)
+		std::string lua_callback;  // Lua code snippet executed on OSC message
+
+		// Non-serialized runtime state
+		void* receiver = nullptr;  // wi::osc::OSCReceiver* (void* to avoid header dependency)
+
+		// API
+		constexpr void Enable() { _flags |= ENABLED; }
+		constexpr void Disable() { _flags &= ~ENABLED; }
+		constexpr bool IsEnabled() const { return _flags & ENABLED; }
+		constexpr bool IsSharedReceiver() const { return _flags & SHARED_RECEIVER; }
+		constexpr bool IsLuaMode() const { return _flags & LUA_MODE; }
+
+		constexpr void SetSharedReceiver(bool value = true) { if (value) { _flags |= SHARED_RECEIVER; } else { _flags &= ~SHARED_RECEIVER; } }
+		constexpr void SetLuaMode(bool value = true) { if (value) { _flags |= LUA_MODE; } else { _flags &= ~LUA_MODE; } }
+
+		void Serialize(wi::Archive& archive, wi::ecs::EntitySerializer& seri);
+	};
 }

@@ -52,6 +52,7 @@ void ComponentsWindow::Create(EditorComponent* _editor)
 	filterCombo.AddItem(ICON_VEHICLE, (uint64_t)Filter::Vehicle);
 	filterCombo.AddItem(ICON_CONSTRAINT, (uint64_t)Filter::Constraint);
 	filterCombo.AddItem(ICON_SPLINE, (uint64_t)Filter::Spline);
+	filterCombo.AddItem(ICON_OSC, (uint64_t)Filter::OSC);
 	filterCombo.SetTooltip("Apply filtering to the Entities by components");
 	filterCombo.SetLocalizationEnabled(wi::gui::LocalizationEnabled::Tooltip);
 	filterCombo.OnSelect([this](wi::gui::EventArgs args) {
@@ -163,6 +164,7 @@ void ComponentsWindow::Create(EditorComponent* _editor)
 	metadataWnd.Create(editor);
 	constraintWnd.Create(editor);
 	splineWnd.Create(editor);
+	oscWnd.Create(editor);
 
 	enum ADD_THING
 	{
@@ -196,6 +198,7 @@ void ComponentsWindow::Create(EditorComponent* _editor)
 		ADD_METADATA,
 		ADD_CONSTRAINT,
 		ADD_SPLINE,
+		ADD_OSC,
 	};
 
 	newComponentCombo.Create("Add component  ");
@@ -235,6 +238,7 @@ void ComponentsWindow::Create(EditorComponent* _editor)
 	newComponentCombo.AddItem("Metadata " ICON_METADATA, ADD_METADATA);
 	newComponentCombo.AddItem("Constraint " ICON_CONSTRAINT, ADD_CONSTRAINT);
 	newComponentCombo.AddItem("Spline " ICON_SPLINE, ADD_SPLINE);
+	newComponentCombo.AddItem("OSC " ICON_OSC, ADD_OSC);
 	newComponentCombo.OnSelect([=](wi::gui::EventArgs args) {
 		newComponentCombo.SetSelectedWithoutCallback(-1);
 		wi::scene::Scene& scene = editor->GetCurrentScene();
@@ -378,6 +382,10 @@ void ComponentsWindow::Create(EditorComponent* _editor)
 				if (scene.splines.Contains(entity))
 					valid = false;
 				break;
+			case ADD_OSC:
+				if (scene.oscs.Contains(entity))
+					valid = false;
+				break;
 			default:
 				valid = false;
 				break;
@@ -496,6 +504,17 @@ void ComponentsWindow::Create(EditorComponent* _editor)
 			case ADD_SPLINE:
 				scene.splines.Create(entity);
 				break;
+			case ADD_OSC:
+			{
+				OSCComponent& osc = scene.oscs.Create(entity);
+				osc.Enable();
+				osc.listen_port = 7000;
+				osc.listen_ip[0] = 127;
+				osc.listen_ip[1] = 0;
+				osc.listen_ip[2] = 0;
+				osc.listen_ip[3] = 1;
+				break;
+			}
 			default:
 				break;
 			}
@@ -543,6 +562,7 @@ void ComponentsWindow::Create(EditorComponent* _editor)
 	AddWidget(&metadataWnd);
 	AddWidget(&constraintWnd);
 	AddWidget(&splineWnd);
+	AddWidget(&oscWnd);
 
 	materialWnd.SetVisible(false);
 	weatherWnd.SetVisible(false);
@@ -578,6 +598,7 @@ void ComponentsWindow::Create(EditorComponent* _editor)
 	metadataWnd.SetVisible(false);
 	constraintWnd.SetVisible(false);
 	splineWnd.SetVisible(false);
+	oscWnd.SetVisible(false);
 
 	XMFLOAT2 size = XMFLOAT2(338, 500);
 	if (editor->main->config.GetSection("layout").Has("components.width"))
@@ -941,6 +962,19 @@ void ComponentsWindow::ResizeLayout()
 		splineWnd.SetVisible(false);
 	}
 
+	if (scene.oscs.Contains(oscWnd.entity))
+	{
+		oscWnd.SetVisible(true);
+		oscWnd.SetPos(pos);
+		oscWnd.SetSize(XMFLOAT2(width, oscWnd.GetScale().y));
+		pos.y += oscWnd.GetSize().y;
+		pos.y += padding;
+	}
+	else
+	{
+		oscWnd.SetVisible(false);
+	}
+
 	if (scene.weathers.Contains(weatherWnd.entity))
 	{
 		weatherWnd.SetVisible(true);
@@ -1260,6 +1294,10 @@ void ComponentsWindow::PushToEntityTree(wi::ecs::Entity entity, int level)
 			{
 				item.name += ICON_SPLINE " ";
 			}
+			if (scene.oscs.Contains(entity))
+			{
+				item.name += ICON_OSC " ";
+			}
 			if (scene.lights.Contains(entity))
 			{
 				const LightComponent* light = scene.lights.GetComponent(entity);
@@ -1409,6 +1447,7 @@ bool ComponentsWindow::CheckEntityFilter(wi::ecs::Entity entity)
 		(has_flag(filter, Filter::Metadata) && scene.metadatas.Contains(entity)) ||
 		(has_flag(filter, Filter::Constraint) && scene.constraints.Contains(entity)) ||
 		(has_flag(filter, Filter::Spline) && scene.splines.Contains(entity)) ||
+		(has_flag(filter, Filter::OSC) && scene.oscs.Contains(entity)) ||
 		(has_flag(filter, Filter::Vehicle) && (scene.rigidbodies.Contains(entity) && scene.rigidbodies.GetComponent(entity)->IsVehicle()))
 		)
 	{

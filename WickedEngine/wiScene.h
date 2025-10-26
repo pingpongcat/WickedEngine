@@ -54,6 +54,7 @@ namespace wi::scene
 		wi::ecs::ComponentManager<SpringComponent>& springs = componentLibrary.Register<SpringComponent>("wi::scene::Scene::springs", 1); // version = 1
 		wi::ecs::ComponentManager<ColliderComponent>& colliders = componentLibrary.Register<ColliderComponent>("wi::scene::Scene::colliders", 2); // version = 2
 		wi::ecs::ComponentManager<ScriptComponent>& scripts = componentLibrary.Register<ScriptComponent>("wi::scene::Scene::scripts");
+		wi::ecs::ComponentManager<OSCComponent>& oscs = componentLibrary.Register<OSCComponent>("wi::scene::Scene::oscs");
 		wi::ecs::ComponentManager<ExpressionComponent>& expressions = componentLibrary.Register<ExpressionComponent>("wi::scene::Scene::expressions");
 		wi::ecs::ComponentManager<HumanoidComponent>& humanoids = componentLibrary.Register<HumanoidComponent>("wi::scene::Scene::humanoids", 3); // version = 3
 		wi::ecs::ComponentManager<wi::terrain::Terrain>& terrains = componentLibrary.Register<wi::terrain::Terrain>("wi::scene::Scene::terrains", 5); // version = 5
@@ -463,6 +464,7 @@ namespace wi::scene
 		void Serialize(wi::Archive& archive);
 
 		void RunAnimationUpdateSystem(wi::jobsystem::context& ctx);
+		void RunOSCUpdateSystem(wi::jobsystem::context& ctx);
 		void RunTransformUpdateSystem(wi::jobsystem::context& ctx);
 		void RunHierarchyUpdateSystem(wi::jobsystem::context& ctx);
 		void RunExpressionUpdateSystem(wi::jobsystem::context& ctx);
@@ -487,6 +489,7 @@ namespace wi::scene
 		void RunCharacterUpdateSystem(wi::jobsystem::context& ctx);
 		void RunSplineUpdateSystem(wi::jobsystem::context& ctx);
 
+		void ApplyOSCValue(const OSCComponent::PropertyMapping& mapping, wi::ecs::Entity osc_entity, float value);
 
 		struct RayIntersectionResult
 		{

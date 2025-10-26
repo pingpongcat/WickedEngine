@@ -1,4 +1,5 @@
 #include "wiScene.h"
+#include "wiOSC.h"
 #include "wiTextureHelper.h"
 #include "wiResourceManager.h"
 #include "wiPhysics.h"
@@ -45,6 +46,7 @@ namespace wi::scene
 		// Script system runs first, because it could create new entities and components
 		//	So GPU persistent resources need to be created accordingly for them too:
 		RunScriptUpdateSystem(ctx);
+		RunOSCUpdateSystem(ctx);
 
 		RunSplineUpdateSystem(ctx);
 
@@ -5472,7 +5474,289 @@ namespace wi::scene
 				}
 			}
 		}
+	}
+	void Scene::RunOSCUpdateSystem(wi::jobsystem::context& ctx)
+	{
+		if (dt == 0)
+			return; // not allowed to be run when dt == 0 as it could be on separate thread!
+
+		auto range = wi::profiler::BeginRangeCPU("OSC Components");
+
+		for (size_t i = 0; i < oscs.GetCount(); ++i)
+		{
+			OSCComponent& osc = oscs[i];
+			Entity entity = oscs.GetEntity(i);
+
+			if (!osc.IsEnabled())
+				continue;
+
+			// Create dedicated receiver if needed
+			if (!osc.IsSharedReceiver() && osc.receiver == nullptr)
+			{
+				osc.receiver = new wi::osc::OSCReceiver();
+				wi::osc::OSCReceiver* receiver = static_cast<wi::osc::OSCReceiver*>(osc.receiver);
+
+				if (!receiver->Initialize(osc.listen_port, osc.listen_ip[0], osc.listen_ip[1], osc.listen_ip[2], osc.listen_ip[3]))
+				{
+					wi::backlog::post("OSC: Failed to initialize receiver on port " + std::to_string(osc.listen_port), wi::backlog::LogLevel::Error);
+					delete receiver;
+					osc.receiver = nullptr;
+					continue;
+				}
+
+				// Register callbacks for all mappings
+				for (auto& mapping : osc.mappings)
+				{
+					receiver->SetCallback(mapping.osc_address, [this, &osc, &mapping, entity](const wi::osc::OSCMessage& msg) {
+						if (msg.GetFloatCount() == 0)
+							return;
+
+						float osc_value = msg.GetFloat(0);
+
+						// Remap value from [value_min, value_max] to [output_min, output_max]
+						float t = (osc_value - mapping.value_min) / (mapping.value_max - mapping.value_min);
+						t = std::clamp(t, 0.0f, 1.0f);
+						float output_value = mapping.output_min + t * (mapping.output_max - mapping.output_min);
+
+						// Apply smoothing
+						if (mapping.smooth)
+						{
+							mapping.target_value = output_value;
+						}
+						else
+						{
+							mapping.smoothed_value = output_value;
+							ApplyOSCValue(mapping, entity, output_value);
+						}
+					});
+				}
+			}
+
+			// Get receiver (dedicated or shared)
+			wi::osc::OSCReceiver* receiver = nullptr;
+			if (osc.IsSharedReceiver())
+			{
+				// TODO: Support shared receiver when we implement OSCReceiverComponent
+				wi::backlog::post("OSC: Shared receiver not yet implemented", wi::backlog::LogLevel::Warning);
+				continue;
+			}
+			else
+			{
+				receiver = static_cast<wi::osc::OSCReceiver*>(osc.receiver);
+			}
+
+			if (receiver)
+			{
+				// Poll for messages (triggers callbacks)
+				receiver->Update();
+
+				// Apply smoothing
+				for (auto& mapping : osc.mappings)
+				{
+					if (mapping.smooth)
+					{
+						// Smooth interpolation
+						float smooth_speed = 1.0f / std::max(mapping.smooth_time, 0.001f);
+						mapping.smoothed_value += (mapping.target_value - mapping.smoothed_value) * std::min(dt * smooth_speed, 1.0f);
+
+						ApplyOSCValue(mapping, entity, mapping.smoothed_value);
+					}
+				}
+
+				// Lua callback mode
+				if (osc.IsLuaMode() && !osc.lua_callback.empty())
+				{
+					while (receiver->HasMessages())
+					{
+						wi::osc::OSCMessage msg = receiver->PopMessage();
+
+						// Execute Lua callback with message data
+						std::string context = "local entity = " + std::to_string(entity) + ";\n";
+						context += "local osc_address = \"" + msg.address + "\";\n";
+						if (msg.GetFloatCount() > 0)
+							context += "local osc_value = " + std::to_string(msg.GetFloat(0)) + ";\n";
+
+						wi::lua::RunText(context + osc.lua_callback);
+					}
+				}
+			}
+		}
+
 		wi::profiler::EndRange(range);
+	}
+
+	void Scene::ApplyOSCValue(const OSCComponent::PropertyMapping& mapping, wi::ecs::Entity osc_entity, float value)
+	{
+		using Path = AnimationComponent::AnimationChannel::Path;
+
+		// Determine target entity (self if not specified)
+		Entity target = mapping.target_entity;
+		if (target == wi::ecs::INVALID_ENTITY)
+			target = osc_entity;
+
+		switch (mapping.target_path)
+		{
+			case Path::TRANSLATION:
+			{
+				TransformComponent* transform = transforms.GetComponent(target);
+				if (transform)
+				{
+					XMFLOAT3 pos = transform->translation_local;
+					if (mapping.component_index == 0 || mapping.component_index == -1)
+						pos.x = value;
+					if (mapping.component_index == 1 || (mapping.component_index == -1 && mapping.component_index != 0))
+						pos.y = value;
+					if (mapping.component_index == 2 || (mapping.component_index == -1 && mapping.component_index != 0))
+						pos.z = value;
+					transform->translation_local = pos;
+					transform->SetDirty();
+				}
+				break;
+			}
+
+			case Path::SCALE:
+			{
+				TransformComponent* transform = transforms.GetComponent(target);
+				if (transform)
+				{
+					XMFLOAT3 scale = transform->scale_local;
+					if (mapping.component_index == 0 || mapping.component_index == -1)
+						scale.x = value;
+					if (mapping.component_index == 1 || (mapping.component_index == -1 && mapping.component_index != 0))
+						scale.y = value;
+					if (mapping.component_index == 2 || (mapping.component_index == -1 && mapping.component_index != 0))
+						scale.z = value;
+					transform->scale_local = scale;
+					transform->SetDirty();
+				}
+				break;
+			}
+
+			case Path::LIGHT_INTENSITY:
+			{
+				LightComponent* light = lights.GetComponent(target);
+				if (light)
+				{
+					light->intensity = value;
+					
+				}
+				break;
+			}
+
+			case Path::LIGHT_RANGE:
+			{
+				LightComponent* light = lights.GetComponent(target);
+				if (light)
+				{
+					light->range = value;
+					
+				}
+				break;
+			}
+
+			case Path::LIGHT_COLOR:
+			{
+				LightComponent* light = lights.GetComponent(target);
+				if (light)
+				{
+					if (mapping.component_index == 0 || mapping.component_index == -1)
+						light->color.x = value;
+					if (mapping.component_index == 1 || (mapping.component_index == -1 && mapping.component_index != 0))
+						light->color.y = value;
+					if (mapping.component_index == 2 || (mapping.component_index == -1 && mapping.component_index != 0))
+						light->color.z = value;
+					
+				}
+				break;
+			}
+
+			case Path::MATERIAL_EMISSIVE:
+			{
+				MaterialComponent* material = materials.GetComponent(target);
+				if (material)
+				{
+					material->emissiveColor.w = value;  // Emissive strength
+					material->SetDirty();
+				}
+				break;
+			}
+
+			case Path::MATERIAL_COLOR:
+			{
+				MaterialComponent* material = materials.GetComponent(target);
+				if (material)
+				{
+					if (mapping.component_index == 0 || mapping.component_index == -1)
+						material->baseColor.x = value;
+					if (mapping.component_index == 1 || (mapping.component_index == -1 && mapping.component_index != 0))
+						material->baseColor.y = value;
+					if (mapping.component_index == 2 || (mapping.component_index == -1 && mapping.component_index != 0))
+						material->baseColor.z = value;
+					if (mapping.component_index == 3)
+						material->baseColor.w = value;  // Alpha
+					material->SetDirty();
+				}
+				break;
+			}
+
+			case Path::MATERIAL_ROUGHNESS:
+			{
+				MaterialComponent* material = materials.GetComponent(target);
+				if (material)
+				{
+					material->roughness = value;
+					material->SetDirty();
+				}
+				break;
+			}
+
+			case Path::MATERIAL_METALNESS:
+			{
+				MaterialComponent* material = materials.GetComponent(target);
+				if (material)
+				{
+					material->metalness = value;
+					material->SetDirty();
+				}
+				break;
+			}
+
+			case Path::MATERIAL_REFLECTANCE:
+			{
+				MaterialComponent* material = materials.GetComponent(target);
+				if (material)
+				{
+					material->reflectance = value;
+					material->SetDirty();
+				}
+				break;
+			}
+
+			case Path::SOUND_VOLUME:
+			{
+				SoundComponent* sound = sounds.GetComponent(target);
+				if (sound)
+				{
+					sound->volume = value;
+				}
+				break;
+			}
+
+			case Path::CAMERA_FOV:
+			{
+				CameraComponent* camera = cameras.GetComponent(target);
+				if (camera)
+				{
+					camera->fov = value;
+					camera->SetDirty();
+				}
+				break;
+			}
+
+			default:
+				// Unsupported path
+				break;
+		}
 	}
 	void Scene::RunSpriteUpdateSystem(wi::jobsystem::context& ctx)
 	{

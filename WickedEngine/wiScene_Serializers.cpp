@@ -3664,4 +3664,76 @@ namespace wi::scene
 		return ret;
 	}
 
+	void OSCComponent::PropertyMapping::Serialize(wi::Archive& archive, EntitySerializer& seri)
+	{
+		SerializeEntity(archive, target_entity, seri);
+
+		if (archive.IsReadMode())
+		{
+			archive >> osc_address;
+			archive >> (uint32_t&)target_path;
+			archive >> value_min;
+			archive >> value_max;
+			archive >> output_min;
+			archive >> output_max;
+			archive >> smooth;
+			archive >> smooth_time;
+			archive >> component_index;
+		}
+		else
+		{
+			archive << osc_address;
+			archive << (uint32_t)target_path;
+			archive << value_min;
+			archive << value_max;
+			archive << output_min;
+			archive << output_max;
+			archive << smooth;
+			archive << smooth_time;
+			archive << component_index;
+		}
+	}
+
+	void OSCComponent::Serialize(wi::Archive& archive, EntitySerializer& seri)
+	{
+		SerializeEntity(archive, shared_receiver_entity, seri);
+
+		if (archive.IsReadMode())
+		{
+			archive >> _flags;
+			archive >> listen_port;
+			archive >> listen_ip[0];
+			archive >> listen_ip[1];
+			archive >> listen_ip[2];
+			archive >> listen_ip[3];
+
+			size_t mapping_count = 0;
+			archive >> mapping_count;
+			mappings.resize(mapping_count);
+			for (size_t i = 0; i < mapping_count; ++i)
+			{
+				mappings[i].Serialize(archive, seri);
+			}
+
+			archive >> lua_callback;
+		}
+		else
+		{
+			archive << _flags;
+			archive << listen_port;
+			archive << listen_ip[0];
+			archive << listen_ip[1];
+			archive << listen_ip[2];
+			archive << listen_ip[3];
+
+			archive << mappings.size();
+			for (auto& mapping : mappings)
+			{
+				mapping.Serialize(archive, seri);
+			}
+
+			archive << lua_callback;
+		}
+	}
+
 }

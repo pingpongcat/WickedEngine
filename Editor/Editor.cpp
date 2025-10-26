@@ -2705,6 +2705,7 @@ void EditorComponent::Update(float dt)
 		componentsWnd.voxelGridWnd.SetEntity(INVALID_ENTITY);
 		componentsWnd.metadataWnd.SetEntity(INVALID_ENTITY);
 		componentsWnd.constraintWnd.SetEntity(INVALID_ENTITY);
+		componentsWnd.oscWnd.SetEntity(INVALID_ENTITY);
 	}
 	else
 	{
@@ -2741,6 +2742,7 @@ void EditorComponent::Update(float dt)
 		componentsWnd.voxelGridWnd.SetEntity(picked.entity);
 		componentsWnd.metadataWnd.SetEntity(picked.entity);
 		componentsWnd.constraintWnd.SetEntity(picked.entity);
+		componentsWnd.oscWnd.SetEntity(picked.entity);
 
 		bool found_object = false;
 		bool found_mesh = false;
