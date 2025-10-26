@@ -5491,20 +5491,25 @@ namespace wi::scene
 				continue;
 
 			// Create dedicated receiver if needed
-			if (!osc.IsSharedReceiver() && osc.receiver == nullptr)
+			if (!osc.IsSharedReceiver())
 			{
-				osc.receiver = new wi::osc::OSCReceiver();
-				wi::osc::OSCReceiver* receiver = static_cast<wi::osc::OSCReceiver*>(osc.receiver);
-
-				if (!receiver->Initialize(osc.listen_port, osc.listen_ip[0], osc.listen_ip[1], osc.listen_ip[2], osc.listen_ip[3]))
+				// Initialize receiver if not already done
+				if (osc.receiver == nullptr)
 				{
-					wi::backlog::post("OSC: Failed to initialize receiver on port " + std::to_string(osc.listen_port), wi::backlog::LogLevel::Error);
-					delete receiver;
-					osc.receiver = nullptr;
-					continue;
+					osc.receiver = new wi::osc::OSCReceiver();
+					wi::osc::OSCReceiver* receiver = static_cast<wi::osc::OSCReceiver*>(osc.receiver);
+
+					if (!receiver->Initialize(osc.listen_port, osc.listen_ip[0], osc.listen_ip[1], osc.listen_ip[2], osc.listen_ip[3]))
+					{
+						wi::backlog::post("OSC: Failed to initialize receiver on port " + std::to_string(osc.listen_port), wi::backlog::LogLevel::Error);
+						delete receiver;
+						osc.receiver = nullptr;
+						continue;
+					}
 				}
 
-				// Register callbacks for all mappings
+				// Always re-register callbacks for all mappings (in case mappings were added/modified)
+				wi::osc::OSCReceiver* receiver = static_cast<wi::osc::OSCReceiver*>(osc.receiver);
 				for (auto& mapping : osc.mappings)
 				{
 					receiver->SetCallback(mapping.osc_address, [this, &osc, &mapping, entity](const wi::osc::OSCMessage& msg) {
