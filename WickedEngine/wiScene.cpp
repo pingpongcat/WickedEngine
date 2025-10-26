@@ -5482,6 +5482,57 @@ namespace wi::scene
 
 		auto range = wi::profiler::BeginRangeCPU("OSC Components");
 
+		// Create shared receiver if needed (used by all components with SHARED_RECEIVER flag)
+		bool needs_shared_receiver = false;
+		for (size_t i = 0; i < oscs.GetCount(); ++i)
+		{
+			OSCComponent& osc = oscs[i];
+			if (osc.IsEnabled() && osc.IsSharedReceiver())
+			{
+				needs_shared_receiver = true;
+				break;
+			}
+		}
+
+		if (needs_shared_receiver && osc_shared_receiver == nullptr)
+		{
+			osc_shared_receiver = new wi::osc::OSCReceiver();
+			wi::osc::OSCReceiver* receiver = static_cast<wi::osc::OSCReceiver*>(osc_shared_receiver);
+
+			// Use port from first enabled shared receiver component
+			uint16_t port = 7000;
+			uint8_t ip[4] = {127, 0, 0, 1};
+			for (size_t i = 0; i < oscs.GetCount(); ++i)
+			{
+				OSCComponent& osc = oscs[i];
+				if (osc.IsEnabled() && osc.IsSharedReceiver())
+				{
+					port = osc.listen_port;
+					ip[0] = osc.listen_ip[0];
+					ip[1] = osc.listen_ip[1];
+					ip[2] = osc.listen_ip[2];
+					ip[3] = osc.listen_ip[3];
+					break;
+				}
+			}
+
+			if (!receiver->Initialize(port, ip[0], ip[1], ip[2], ip[3]))
+			{
+				wi::backlog::post("OSC: Failed to initialize shared receiver on port " + std::to_string(port), wi::backlog::LogLevel::Error);
+				delete receiver;
+				osc_shared_receiver = nullptr;
+			}
+			else
+			{
+				wi::backlog::post("OSC: Shared receiver listening on " +
+					std::to_string((int)ip[0]) + "." +
+					std::to_string((int)ip[1]) + "." +
+					std::to_string((int)ip[2]) + "." +
+					std::to_string((int)ip[3]) + ":" +
+					std::to_string(port), wi::backlog::LogLevel::Default);
+			}
+		}
+
 		for (size_t i = 0; i < oscs.GetCount(); ++i)
 		{
 			OSCComponent& osc = oscs[i];
@@ -5490,7 +5541,7 @@ namespace wi::scene
 			if (!osc.IsEnabled())
 				continue;
 
-			// Create dedicated receiver if needed
+			// Create dedicated receiver if needed (for non-shared components on different ports)
 			if (!osc.IsSharedReceiver())
 			{
 				// Initialize receiver if not already done
@@ -5541,9 +5592,44 @@ namespace wi::scene
 			wi::osc::OSCReceiver* receiver = nullptr;
 			if (osc.IsSharedReceiver())
 			{
-				// TODO: Support shared receiver when we implement OSCReceiverComponent
-				wi::backlog::post("OSC: Shared receiver not yet implemented", wi::backlog::LogLevel::Warning);
-				continue;
+				receiver = static_cast<wi::osc::OSCReceiver*>(osc_shared_receiver);
+
+				// Register callbacks for shared receiver components
+				if (receiver != nullptr)
+				{
+					for (size_t mapping_idx = 0; mapping_idx < osc.mappings.size(); ++mapping_idx)
+					{
+						receiver->SetCallback(osc.mappings[mapping_idx].osc_address,
+							[this, &osc, mapping_idx, entity](const wi::osc::OSCMessage& msg) {
+
+							if (mapping_idx >= osc.mappings.size())
+								return;
+
+							auto& mapping = osc.mappings[mapping_idx];
+
+							if (msg.GetFloatCount() == 0)
+								return;
+
+							float osc_value = msg.GetFloat(0);
+
+							// Remap value from [value_min, value_max] to [output_min, output_max]
+							float t = (osc_value - mapping.value_min) / (mapping.value_max - mapping.value_min);
+							t = std::clamp(t, 0.0f, 1.0f);
+							float output_value = mapping.output_min + t * (mapping.output_max - mapping.output_min);
+
+							// Apply smoothing
+							if (mapping.smooth)
+							{
+								mapping.target_value = output_value;
+							}
+							else
+							{
+								mapping.smoothed_value = output_value;
+								ApplyOSCValue(mapping, entity, output_value);
+							}
+						});
+					}
+				}
 			}
 			else
 			{
@@ -5552,8 +5638,12 @@ namespace wi::scene
 
 			if (receiver)
 			{
-				// Poll for messages (triggers callbacks)
-				receiver->Update();
+				// Poll for messages (triggers callbacks) - only for dedicated receivers
+				// Shared receiver is updated once after all components register callbacks
+				if (!osc.IsSharedReceiver())
+				{
+					receiver->Update();
+				}
 
 				// Apply smoothing
 				for (auto& mapping : osc.mappings)
@@ -5585,6 +5675,13 @@ namespace wi::scene
 					}
 				}
 			}
+		}
+
+		// Update shared receiver once (after all callbacks are registered)
+		if (osc_shared_receiver != nullptr)
+		{
+			wi::osc::OSCReceiver* shared = static_cast<wi::osc::OSCReceiver*>(osc_shared_receiver);
+			shared->Update();
 		}
 
 		wi::profiler::EndRange(range);

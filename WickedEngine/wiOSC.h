@@ -119,7 +119,7 @@ namespace wi::osc
 		wi::network::Socket socket;
 		char buffer[2048];	// Buffer for receiving UDP packets
 
-		std::unordered_map<std::string, MessageCallback> callbacks;
+		std::unordered_map<std::string, std::vector<MessageCallback>> callbacks;
 		std::queue<OSCMessage> message_queue;
 		mutable std::mutex queue_mutex;
 

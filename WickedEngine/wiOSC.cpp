@@ -178,7 +178,11 @@ namespace wi::osc
 		auto it = callbacks.find(message.address);
 		if (it != callbacks.end())
 		{
-			it->second(message);
+			// Invoke all registered callbacks for this address
+			for (const auto& callback : it->second)
+			{
+				callback(message);
+			}
 		}
 		else
 		{
@@ -190,7 +194,7 @@ namespace wi::osc
 
 	void OSCReceiver::SetCallback(const std::string& address, MessageCallback callback)
 	{
-		callbacks[address] = callback;
+		callbacks[address].push_back(callback);
 	}
 
 	void OSCReceiver::RemoveCallback(const std::string& address)

@@ -163,8 +163,9 @@ void OSCWindow::Create(EditorComponent* _editor)
 	AddWidget(&addMappingButton);
 
 	// Mapping list
+	y += step;
 	mappingList.Create("Mappings");
-	mappingList.SetPos(XMFLOAT2(x, y += step));
+	mappingList.SetPos(XMFLOAT2(x, y));
 	mappingList.SetSize(XMFLOAT2(wid, 100));
 	mappingList.OnSelect([this](wi::gui::EventArgs args) {
 		if (args.iValue >= 0)
@@ -174,12 +175,12 @@ void OSCWindow::Create(EditorComponent* _editor)
 	});
 	AddWidget(&mappingList);
 
-	y += 100;  // Move past the mapping list height
+	y += 100;  // Move past the 100px tall mapping list
 
-	// Remove mapping button (select a mapping first, then click this to remove it)
+	// Remove mapping button (appears right after the mapping list)
 	removeMappingButton.Create("Remove Selected " ICON_FA_XMARK);
 	removeMappingButton.SetTooltip("Remove the selected mapping from the list above");
-	removeMappingButton.SetPos(XMFLOAT2(x, y += step));
+	removeMappingButton.SetPos(XMFLOAT2(x, y));
 	removeMappingButton.SetSize(XMFLOAT2(wid, hei));
 	removeMappingButton.OnClick([this](wi::gui::EventArgs args) {
 		if (selected_mapping_index >= 0)
@@ -195,7 +196,7 @@ void OSCWindow::Create(EditorComponent* _editor)
 	});
 	AddWidget(&removeMappingButton);
 
-	y += step;
+	y += step;  // Extra spacing before detail controls
 
 	// Selected mapping controls
 	addressLabel.Create("OSC Address:");
@@ -530,7 +531,7 @@ void OSCWindow::RefreshMappingList()
 
 	// Show/hide mapping detail controls based on whether mappings exist
 	bool show_details = has_mappings;
-	removeMappingButton.SetVisible(show_details);
+	removeMappingButton.SetVisible(has_mappings);  // Always visible when there are mappings
 	addressLabel.SetVisible(show_details);
 	addressInput.SetVisible(show_details);
 	propertyLabel.SetVisible(show_details);

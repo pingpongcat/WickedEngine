@@ -78,6 +78,7 @@ namespace wi::scene
 		CameraComponent camera; // for LOD and 3D sound update
 		std::shared_ptr<void> physics_scene;
 		wi::SpinLock locker;
+		void* osc_shared_receiver = nullptr; // Shared OSC receiver (wi::osc::OSCReceiver*) for all OSC components
 		wi::primitive::AABB bounds;
 		wi::vector<wi::primitive::AABB> parallel_bounds;
 		WeatherComponent weather;

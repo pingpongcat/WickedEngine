@@ -508,6 +508,7 @@ void ComponentsWindow::Create(EditorComponent* _editor)
 			{
 				OSCComponent& osc = scene.oscs.Create(entity);
 				osc.Enable();
+				osc.SetSharedReceiver(true);  // Use shared receiver by default
 				osc.listen_port = 7000;
 				osc.listen_ip[0] = 127;
 				osc.listen_ip[1] = 0;
